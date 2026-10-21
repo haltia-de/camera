@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.haltia_de.Camera</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>Camera</name>
+  <name xml:lang="ru">Камера</name>
+  <summary>Take a photo with one big button</summary>
+  <summary xml:lang="ru">Фотографировать одной большой кнопкой</summary>
+  <description>
+    <p xml:lang="ru">Видоискатель во весь экран, одна большая кнопка «Снять» и «Через 3 секунды», чтобы сфотографировать себя. Снимок сразу сохраняется в папке «Изображения/Камера», и его можно отдать другой программе: раскрасить или отправить. Без настроек и видео.</p>
+    <p>A full-screen viewfinder, one big button and a 3 second timer, made for an older person's tablet. Photos are kept in Pictures/Камера and can be handed to other programs.</p>
+  </description>
+  <launchable type="desktop-id">io.github.haltia_de.Camera.desktop</launchable>
+  <url type="homepage">https://github.com/haltia-de/camera</url>
+  <developer id="io.github.haltia_de"><name>Mikhail Nevskiy</name></developer>
+  <provides><binary>haltia-camera</binary></provides>
+  <content_rating type="oars-1.1"/>
+  <requires><control>touch</control></requires>
+  <recommends><control>pointing</control></recommends>
+  <releases>
+    <release version="0.1.0" date="2026-10-21">
+      <description>
+        <p>The first version: a viewfinder, «Снять» and «Через 3 секунды», the photo with «Ещё раз» and «Готово», buttons for the programs that take photos, and a photo for a program that asks for one.</p>
+        <p xml:lang="ru">Первая версия: видоискатель, «Снять» и «Через 3 секунды», снимок с кнопками «Ещё раз» и «Готово», кнопки программ, которые принимают фото, и снимок по просьбе другой программы.</p>
+      </description>
+    </release>
+  </releases>
+</component>

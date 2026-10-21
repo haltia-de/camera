@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Camera
+Name[ru]=Камера
+Comment=Take a photo with one big button
+Comment[ru]=Фотографировать одной большой кнопкой
+Exec=haltia-camera
+Icon=io.github.haltia_de.Camera
+Terminal=false
+Categories=GTK;Graphics;Photography;
+Keywords=camera;photo;selfie;камера;фото;снимок;
+StartupNotify=true
+X-B8K-Home=true

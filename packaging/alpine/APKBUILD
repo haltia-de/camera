@@ -1,0 +1,28 @@
+# Maintainer: Mikhail Nevskiy <rensomail@gmail.com>
+pkgname=haltia-camera
+pkgver=0.1.0
+pkgrel=0
+pkgdesc="Камера: Take a photo with one big button (GTK 3)"
+url="https://github.com/haltia-de/camera"
+arch="noarch"
+license="GPL-2.0-or-later"
+# haltia_kit.camera came after kit 2.2.0. gst-plugins-base brings the
+# GstVideo typelib and videotestsrc, gst-plugins-good jpegdec and v4l2src;
+# libcamera's GStreamer element joins once it works on the tablet.
+depends="python3 py3-gobject3 gtk+3.0 py3-haltia-kit>2.2.0 gstreamer
+	gst-plugins-base gst-plugins-good"
+checkdepends="py3-gobject3 py3-haltia-kit gst-plugins-base gst-plugins-good"
+source="$pkgname-$pkgver.tar.gz::https://github.com/haltia-de/camera/archive/v$pkgver.tar.gz"
+builddir="$srcdir/camera-$pkgver"
+
+check() {
+	python3 -m py_compile haltia-camera haltia_camera/*.py
+	python3 -m unittest discover -s tests
+}
+
+package() {
+	sh ./install.sh "$pkgdir" /usr
+}
+
+# `abuild checksum` fills this in for a release.
+sha512sums="SKIP"
