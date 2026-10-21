@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Камера (haltia-camera): one big button, a 3 s timer, and photos for
+other programs.
+
+The viewfinder fills the window; «Снять» takes a photo, «Через 3 секунды»
+takes one after a countdown. The photo is then shown large with «Ещё раз»
+and «Готово»; it is already saved in <Pictures>/Камера (haltia_kit.camera).
+
+Opened by itself, «Готово» offers the programs that take photos
+(haltia_camera.takers). Opened by a program (haltia-camera --take-photo,
+what haltia_kit.camera.take_photo() runs), it is its own instance, and
+«Готово» prints the photo's absolute path as the last line of stdout and
+exits 0; closing it exits 0 with no path (a cancel).
+
+HALTIA_CAMERA_SOURCE=videotestsrc shows GStreamer's test picture instead
+of a camera, for trying it without one.
+"""
+
+import os
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+PREFIX = os.path.dirname(HERE)
+# The program's modules sit beside it in a checkout, in lib when installed.
+sys.path.insert(0, HERE if os.path.isdir(os.path.join(HERE, "haltia_camera"))
+                else os.path.join(PREFIX, "lib", "haltia-camera"))
+
+import gi  # noqa: E402
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
+from haltia_kit import camera  # noqa: E402
+
+from haltia_camera import takers  # noqa: E402
+
+ON_HALTIA = "Haltia" in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")
+BUSY_NOTE = "Камера занята звонком"
+COUNT = 3
+# How often a busy camera is tried again, in seconds.
+RETRY = 3
+
+CSS = b"""
+button.big {
+  font-size: 26px;
+  min-height: 72px;
+  padding: 0 32px;
+}
+button.shoot {
+  font-size: 32px;
+  min-height: 96px;
+  min-width: 260px;
+}
+.count {
+  font-size: 160px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 12px black;
+}
+.busy {
+  background: black;
+  color: white;
+  font-size: 34px;
+}
+.saved {
+  font-size: 26px;
+}
+"""
+
+
+def test_source(name):
+    """A camera from a GStreamer test element, or None for the real one."""
+    if not name:
+        return None
+    from gi.repository import Gst
+
+    def make():
+        src = Gst.ElementFactory.make(name)
+        if src is not None and src.find_property("is-live"):
+            src.set_property("is-live", True)
+        return src
+    return camera.Camera(name, make)
+
+
+def found_takers():
+    """(desktop id, label, app info) of the programs that take a photo."""
+    found = []
+    for info in Gio.AppInfo.get_all_for_type(takers.MIME):
+        if isinstance(info, Gio.DesktopAppInfo) and info.should_show():
+            found.append((info.get_id(), info.get_locale_string(takers.KEY),
+                          info))
+    return takers.choose(found)
+
+
+def big(label, *classes):
+    button = Gtk.Button(label=label)
+    for name in ("big",) + classes:
+        button.get_style_context().add_class(name)
+    return button
+
+
+def row(*buttons):
+    box = Gtk.Box(spacing=16, halign=Gtk.Align.CENTER, margin=16)
+    for button in buttons:
+        box.pack_start(button, False, False, 0)
+    return box
+
+
+class Window:
+    def __init__(self, app, take):
+        self.app = app
+        self.take = take
+        self.path = None
+        self.counting = 0
+        self.tick = 0
+        self.retry = 0
+        self.win = Gtk.ApplicationWindow(application=app, title="Камера")
+        self.win.set_default_size(1000, 700)
+        self.win.maximize()
+        header = Gtk.HeaderBar(title="Камера")
+        # The shell closes a program with its own ✕; elsewhere the window
+        # has the desktop's buttons (its decoration-layout).
+        header.set_show_close_button(not ON_HALTIA)
+        self.win.set_titlebar(header)
+        self.win.connect("destroy", self.closed)
+
+        self.stack = Gtk.Stack()
+        self.stack.add_named(self.view_page(), "view")
+        self.stack.add_named(self.shot_page(), "shot")
+        self.stack.add_named(self.send_page(), "send")
+        self.win.add(self.stack)
+        self.win.show_all()
+        self.busy.hide()
+        self.count.hide()
+        self.changed(self.view.state)
+
+    # The viewfinder: «Снять», «Через 3 секунды», and the busy note over all.
+    def view_page(self):
+        self.count = Gtk.Label(halign=Gtk.Align.CENTER,
+                               valign=Gtk.Align.CENTER)
+        self.count.get_style_context().add_class("count")
+        self.shoot = big("Снять", "shoot", "suggested-action")
+        self.shoot.connect("clicked", lambda b: self.capture())
+        self.later = big("Через 3 секунды")
+        self.later.connect("clicked", lambda b: self.countdown())
+        buttons = [self.later, self.shoot]
+        if self.take:
+            cancel = big("Отмена")
+            cancel.connect("clicked", lambda b: self.win.destroy())
+            buttons.insert(0, cancel)
+        self.buttons = row(*buttons)
+        # A busy camera (a call) is all the window says: nothing to press.
+        self.busy = Gtk.Label(label=BUSY_NOTE, wrap=True,
+                              justify=Gtk.Justification.CENTER)
+        self.busy.get_style_context().add_class("busy")
+        # Last, as it tells changed() its state.
+        self.view = camera.Viewfinder(
+            camera=test_source(os.environ.get("HALTIA_CAMERA_SOURCE")),
+            changed=self.changed)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        overlay = Gtk.Overlay()
+        overlay.add(self.view)
+        overlay.add_overlay(self.count)
+        box.pack_start(overlay, True, True, 0)
+        box.pack_start(self.buttons, False, False, 0)
+        outer = Gtk.Overlay()
+        outer.add(box)
+        outer.add_overlay(self.busy)
+        return outer
+
+    # The photo, large, with «Ещё раз» and «Готово».
+    def shot_page(self):
+        self.photo = Gtk.Image(vexpand=True, hexpand=True)
+        again = big("Ещё раз")
+        again.connect("clicked", lambda b: self.again())
+        done = big("Готово", "suggested-action")
+        done.connect("clicked", lambda b: self.done())
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.pack_start(self.photo, True, True, 0)
+        box.pack_start(row(again, done), False, False, 0)
+        return box
+
+    # Opened by itself: the programs the photo can go to.
+    def send_page(self):
+        self.saved = Gtk.Label(label="Фото сохранено в папке «Камера».",
+                               wrap=True, vexpand=True)
+        self.saved.get_style_context().add_class("saved")
+        self.send = row()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.pack_start(self.saved, True, True, 0)
+        box.pack_start(self.send, False, False, 0)
+        return box
+
+    def changed(self, state):
+        busy = state == camera.BUSY
+        self.busy.set_visible(busy)
+        self.buttons.set_visible(not busy)
+        ready = state == camera.ON and not self.counting
+        self.shoot.set_sensitive(ready)
+        self.later.set_sensitive(ready)
+        if state != camera.ON:
+            self.stop_count()
+        if busy and not self.retry:
+            self.retry = GLib.timeout_add_seconds(RETRY, self.try_again)
+
+    def try_again(self):
+        if self.view.state != camera.BUSY:
+            self.retry = 0
+            return False
+        if self.view.get_mapped():
+            self.view.preview.start()
+        return True
+
+    def countdown(self):
+        self.counting = COUNT
+        self.count.set_text(str(self.counting))
+        self.count.show()
+        self.changed(self.view.state)
+        self.tick = GLib.timeout_add_seconds(1, self.next_count)
+
+    def next_count(self):
+        self.counting -= 1
+        if self.counting > 0:
+            self.count.set_text(str(self.counting))
+            return True
+        self.tick = 0
+        self.stop_count()
+        self.capture()
+        return False
+
+    def stop_count(self):
+        if self.tick:
+            GLib.source_remove(self.tick)
+            self.tick = 0
+        self.counting = 0
+        self.count.hide()
+
+    def capture(self):
+        self.shoot.set_sensitive(False)
+        self.later.set_sensitive(False)
+        self.view.capture(self.taken)
+
+    def taken(self, path):
+        # No path: the viewfinder already says why.
+        if not path:
+            return
+        self.path = path
+        alloc = self.stack.get_allocation()
+        try:
+            pix = GdkPixbuf.Pixbuf.new_from_file(path)
+            pix = pix.apply_embedded_orientation()
+            scale = min(alloc.width / pix.get_width(),
+                        (alloc.height - 104) / pix.get_height(), 1)
+            if scale < 1:
+                pix = pix.scale_simple(max(1, int(pix.get_width() * scale)),
+                                       max(1, int(pix.get_height() * scale)),
+                                       GdkPixbuf.InterpType.BILINEAR)
+            self.photo.set_from_pixbuf(pix)
+        except GLib.Error:
+            self.photo.clear()
+        self.stack.set_visible_child_name("shot")
+
+    def again(self):
+        # The photo stays in the folder: every shot is kept.
+        self.path = None
+        self.stack.set_visible_child_name("view")
+        self.changed(self.view.state)
+
+    def done(self):
+        if self.take:
+            print(self.path, flush=True)
+            self.win.destroy()
+            return
+        found = found_takers()
+        if not found:
+            self.again()
+            return
+        for child in self.send.get_children():
+            child.destroy()
+        for _app_id, label, info in found:
+            button = big(label, "suggested-action")
+            button.connect("clicked", self.give, info)
+            self.send.pack_start(button, False, False, 0)
+        more = big("Снять ещё")
+        more.connect("clicked", lambda b: self.again())
+        self.send.pack_start(more, False, False, 0)
+        self.send.show_all()
+        self.stack.set_visible_child_name("send")
+
+    def give(self, button, info):
+        ctx = self.win.get_display().get_app_launch_context()
+        try:
+            info.launch([Gio.File.new_for_path(self.path)], ctx)
+        except GLib.Error as err:
+            print("haltia-camera: %s" % err.message, file=sys.stderr)
+            return
+        # The photo has gone on; the camera is let go.
+        self.win.destroy()
+
+    def closed(self, win):
+        for source in (self.tick, self.retry):
+            if source:
+                GLib.source_remove(source)
+        self.tick = self.retry = 0
+
+
+class App(Gtk.Application):
+    def __init__(self, take):
+        # A program's request is its own instance, never sent to an open
+        # one: it gets its answer on stdout (haltia_kit.camera.take_photo).
+        flags = Gio.ApplicationFlags.NON_UNIQUE if take \
+            else Gio.ApplicationFlags.FLAGS_NONE
+        super().__init__(application_id=takers.APP, flags=flags)
+        self.take = take
+        self.window = None
+
+    def do_startup(self):
+        Gtk.Application.do_startup(self)
+        css = Gtk.CssProvider()
+        css.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), css,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    def do_activate(self):
+        if self.window is None:
+            self.window = Window(self, self.take)
+        self.window.win.present()
+
+
+def main():
+    take, argv = takers.parse(sys.argv)
+    GLib.set_prgname("haltia-camera")
+    return App(take).run(argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
