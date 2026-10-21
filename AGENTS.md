@@ -57,6 +57,8 @@ and the Camera closes. There is no built-in list of programs.
 
 A busy camera (`haltia_kit.camera.BUSY`, in practice a call) shows only
 «Камера занята звонком», no buttons, and is tried again every 3 seconds.
+When `--take-photo` finds the camera held by the open Camera (its name is
+owned on the session bus), it says «Камера уже открыта» instead.
 
 ## Conventions
 

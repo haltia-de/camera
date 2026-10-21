@@ -37,6 +37,8 @@ from haltia_camera import takers  # noqa: E402
 
 ON_HALTIA = "Haltia" in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")
 BUSY_NOTE = "Камера занята звонком"
+# Asked by a program while the Camera is already open and holds the camera.
+OPEN_NOTE = "Камера уже открыта"
 COUNT = 3
 # How often a busy camera is tried again, in seconds.
 RETRY = 3
@@ -91,6 +93,21 @@ def found_takers():
             found.append((info.get_id(), info.get_locale_string(takers.KEY),
                           info))
     return takers.choose(found)
+
+
+def camera_open():
+    """Whether the Camera opened by itself runs (it owns its name on the
+    session bus; a --take-photo instance never does)."""
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        reply = bus.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus", "NameHasOwner",
+            GLib.Variant("(s)", (takers.APP,)), GLib.VariantType("(b)"),
+            Gio.DBusCallFlags.NONE, -1, None)
+    except GLib.Error:
+        return False
+    return reply.unpack()[0]
 
 
 def big(label, *classes):
@@ -194,6 +211,9 @@ class Window:
 
     def changed(self, state):
         busy = state == camera.BUSY
+        if busy:
+            self.busy.set_text(OPEN_NOTE if self.take and camera_open()
+                               else BUSY_NOTE)
         self.busy.set_visible(busy)
         self.buttons.set_visible(not busy)
         ready = state == camera.ON and not self.counting
@@ -208,8 +228,10 @@ class Window:
         if self.view.state != camera.BUSY:
             self.retry = 0
             return False
+        # The viewfinder turns the camera on when it is mapped: shown anew.
         if self.view.get_mapped():
-            self.view.preview.start()
+            self.view.hide()
+            self.view.show()
         return True
 
     def countdown(self):
@@ -272,10 +294,8 @@ class Window:
             print(self.path, flush=True)
             self.win.destroy()
             return
+        # No programs: the page only says the photo is saved.
         found = found_takers()
-        if not found:
-            self.again()
-            return
         for child in self.send.get_children():
             child.destroy()
         for _app_id, label, info in found:
@@ -331,7 +351,8 @@ class App(Gtk.Application):
 
 def main():
     take, argv = takers.parse(sys.argv)
-    GLib.set_prgname("haltia-camera")
+    # The Wayland app_id: the shell matches the window to the .desktop file.
+    GLib.set_prgname(takers.APP)
     return App(take).run(argv)
 
 
