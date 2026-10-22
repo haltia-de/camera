@@ -19,10 +19,10 @@
   <requires><control>touch</control></requires>
   <recommends><control>pointing</control></recommends>
   <releases>
-    <release version="0.1.0" date="2026-10-21">
+    <release version="0.1.0" date="2026-10-22">
       <description>
-        <p>The first version: a viewfinder, «Снять» and «Через 3 секунды», the photo with «Ещё раз» and «Готово», buttons for the programs that take photos, and a photo for a program that asks for one.</p>
-        <p xml:lang="ru">Первая версия: видоискатель, «Снять» и «Через 3 секунды», снимок с кнопками «Ещё раз» и «Готово», кнопки программ, которые принимают фото, и снимок по просьбе другой программы.</p>
+        <p>The first version: a viewfinder, «Снять» and «Через 3 секунды», the photo with «Ещё раз» and «Готово», «Отправить», and a photo for a program that asks for one.</p>
+        <p xml:lang="ru">Первая версия: видоискатель, «Снять» и «Через 3 секунды», снимок с кнопками «Ещё раз» и «Готово», «Отправить», и снимок по просьбе другой программы.</p>
       </description>
     </release>
   </releases>
