@@ -6,7 +6,7 @@ pkgdesc="Камера: Take a photo with one big button (GTK 3)"
 url="https://github.com/haltia-de/camera"
 arch="noarch"
 license="GPL-2.0-or-later"
-# haltia_kit.camera came after kit 2.2.0. gst-plugins-base brings the
+# haltia_kit.camera and haltia_kit.share came after kit 2.2.0. gst-plugins-base brings the
 # GstVideo typelib and videotestsrc, gst-plugins-good jpegdec and v4l2src;
 # libcamera's GStreamer element joins once it works on the tablet.
 depends="python3 py3-gobject3 gtk+3.0 py3-haltia-kit>2.2.0 gstreamer

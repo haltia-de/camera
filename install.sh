@@ -4,7 +4,7 @@
 # ROOT empty or / for this system; PREFIX /usr/local unless given (a
 # package passes /usr). It needs Python 3 with PyGObject (GTK 3),
 # GStreamer with gst-plugins-base and gst-plugins-good, and haltia-kit
-# with haltia_kit.camera (github.com/haltia-de/kit). The .desktop file
+# with haltia_kit.camera and haltia_kit.share (github.com/haltia-de/kit). The .desktop file
 # shows it in any desktop's launcher; the Haltia tablet shell puts it on
 # its home screen (X-B8K-Home).
 set -eu

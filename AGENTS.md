@@ -18,16 +18,16 @@ adds only what is this repository's own.
   camera; add `--take-photo` to try what a program gets.
 - Needs Python 3, PyGObject with GTK 3, GStreamer (gst-plugins-base for the
   GstVideo typelib, gst-plugins-good for jpegdec and v4l2src; libcamera's
-  element later) and haltia-kit with `haltia_kit.camera` (after kit 2.2.0;
-  until it is released, test against kit main).
+  element later) and haltia-kit with `haltia_kit.camera` and
+  `haltia_kit.share` (after kit 2.2.0; until they are released, test
+  against kit main).
 - Folders come from GLib via `haltia_kit.camera` (`<Pictures>/Камера`),
   never from `~`.
 
 ## Layout
 
-- `haltia-camera`: the GTK program (pages: viewfinder, photo, programs).
-- `haltia_camera/takers.py`: no screen: which programs take a photo, and
-  the command line.
+- `haltia-camera`: the GTK program (pages: viewfinder, photo, send).
+- `haltia_camera/command.py`: no screen: the app id and the command line.
 - `data/`: the .desktop file, icon and AppStream metainfo.
 - `packaging/alpine/APKBUILD`; Flatpak comes later.
 
@@ -40,18 +40,14 @@ one; if the open one holds the camera, the new one shows the busy state.
 exits 0; closing or «Отмена» exits 0 with no path. Nothing else may be
 printed after the path.
 
-## Programs that take a photo
+## Sending a photo
 
-Opened by itself, «Готово» shows up to three big buttons, one per program
-whose .desktop file has `image/jpeg` in `MimeType` and the key
-`X-Haltia-Photo`, the words on the button (translated like `Name`):
-
-    MimeType=image/jpeg;image/png;
-    X-Haltia-Photo=Colour in
-    X-Haltia-Photo[ru]=Раскрасить
-
-The program is started with the photo as its file (`%f`/`%F`/`%u`/`%U`)
-and the Camera closes. There is no built-in list of programs.
+Opened by itself, «Готово» shows «Фото сохранено» with «Отправить» and
+«Снять ещё». «Отправить» calls `haltia_kit.share.send(path, window)`: the
+kit's dialog finds the receivers (`X-Haltia-Share=true` and `image/jpeg`
+in `MimeType`), starts the one tapped with the photo, or says there is
+nowhere to send it. The Camera keeps no list of programs and reads no
+.desktop key of its own.
 
 ## Busy camera
 
