@@ -35,6 +35,8 @@ class Files(unittest.TestCase):
         # take_photo() appends --take-photo to Exec, without field codes.
         self.assertEqual(main["Exec"], "haltia-camera")
         self.assertEqual(main["Icon"], ID)
+        self.assertEqual(main["X-Haltia-Home"], "true")
+        self.assertNotIn("X-B8K-Home", main)
 
 
 if __name__ == "__main__":
