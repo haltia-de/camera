@@ -27,6 +27,25 @@ class Files(unittest.TestCase):
                         read("packaging", "alpine", "APKBUILD"), re.M).group(1)
         self.assertEqual(apk, news[0])
 
+    def test_release_descriptions_agree(self):
+        news = read("NEWS.md")
+        release = ET.fromstring(read("data", ID + ".metainfo.xml").encode()) \
+            .find("releases/release")
+        for heading, language in (("Русский", "ru"), ("English", None)):
+            description = news.split("### " + heading + "\n\n", 1)[1] \
+                .split("\n\n", 1)[0].strip()
+            paragraph = next(p for p in release.findall("description/p")
+                             if p.get("{http://www.w3.org/XML/1998/namespace}lang")
+                             == language)
+            self.assertEqual(paragraph.text, description)
+
+    def test_camera_dependencies(self):
+        apk = read("packaging", "alpine", "APKBUILD")
+        dependencies = re.search(r'^depends="([^"]+)"', apk, re.M).group(1).split()
+        for dependency in ("py3-haltia-kit>=2.3.0", "gst-plugins-good",
+                           "libcamera-gstreamer"):
+            self.assertIn(dependency, dependencies)
+
     def test_desktop_entry(self):
         entry = configparser.ConfigParser(interpolation=None)
         entry.optionxform = str
