@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The window's choices without a screen: a failed still offers the shot
-again, a busy camera is tried again ever later. Skipped without GTK or
-haltia_kit.camera."""
+again, a busy camera is tried again ever later, «Отправить» hands the
+photo to haltia_kit.share. Skipped without GTK, haltia_kit.camera or
+haltia_kit.share."""
 import importlib.machinery
 import importlib.util
 import os
@@ -43,7 +44,7 @@ def window(**kw):
     return win
 
 
-@unittest.skipUnless(app, "no GTK 3 or no haltia_kit.camera")
+@unittest.skipUnless(app, "no GTK 3, haltia_kit.camera or haltia_kit.share")
 class Window(unittest.TestCase):
     def test_failed_still_offers_the_shot(self):
         win = window(failed=True)
@@ -78,6 +79,17 @@ class Window(unittest.TestCase):
         win = window(view=view, retry=0, away=True)
         self.assertFalse(app.Window.try_again(win))
         self.assertEqual(win.retry, 0)
+
+    def test_send_gives_the_photo_to_the_kit(self):
+        sent = []
+        win = window(path="/p/Камера/photo.jpg", win=object())
+        real = app.share.send
+        app.share.send = lambda path, parent=None: sent.append((path, parent))
+        try:
+            app.Window.send(win)
+        finally:
+            app.share.send = real
+        self.assertEqual(sent, [("/p/Камера/photo.jpg", win.win)])
 
 
 if __name__ == "__main__":

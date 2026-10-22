@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Камера (haltia-camera): one big button, a 3 s timer, and photos for
-other programs.
+"""Камера (haltia-camera): one big button, a 3 s timer, and photos to
+send on or give to a program.
 
 The viewfinder fills the window; «Снять» takes a photo, «Через 3 секунды»
 takes one after a countdown. The photo is then shown large with «Ещё раз»
 and «Готово»; it is already saved in <Pictures>/Камера (haltia_kit.camera).
 
-Opened by itself, «Готово» offers the programs that take photos
-(haltia_camera.takers). Opened by a program (haltia-camera --take-photo,
-what haltia_kit.camera.take_photo() runs), it is its own instance, and
+Opened by itself, «Готово» offers «Отправить», kit's dialog of the
+programs that take the photo (haltia_kit.share). Opened by a program
+(haltia-camera --take-photo, what haltia_kit.camera.take_photo() runs),
+it is its own instance, and
 «Готово» prints the photo's absolute path as the last line of stdout and
 exits 0; closing it exits 0 with no path (a cancel).
 
@@ -31,9 +32,9 @@ import gi  # noqa: E402
 gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
-from haltia_kit import camera  # noqa: E402
+from haltia_kit import camera, share  # noqa: E402
 
-from haltia_camera import takers  # noqa: E402
+from haltia_camera import command  # noqa: E402
 
 ON_HALTIA = "Haltia" in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")
 BUSY_NOTE = "Камера занята звонком"
@@ -95,16 +96,6 @@ def test_source(name):
     return camera.Camera(name, make)
 
 
-def found_takers():
-    """(desktop id, label, app info) of the programs that take a photo."""
-    found = []
-    for info in Gio.AppInfo.get_all_for_type(takers.MIME):
-        if isinstance(info, Gio.DesktopAppInfo) and info.should_show():
-            found.append((info.get_id(), info.get_locale_string(takers.KEY),
-                          info))
-    return takers.choose(found)
-
-
 def camera_open():
     """Whether the Camera opened by itself runs (it owns its name on the
     session bus; a --take-photo instance never does)."""
@@ -113,7 +104,7 @@ def camera_open():
         reply = bus.call_sync(
             "org.freedesktop.DBus", "/org/freedesktop/DBus",
             "org.freedesktop.DBus", "NameHasOwner",
-            GLib.Variant("(s)", (takers.APP,)), GLib.VariantType("(b)"),
+            GLib.Variant("(s)", (command.APP,)), GLib.VariantType("(b)"),
             Gio.DBusCallFlags.NONE, -1, None)
     except GLib.Error:
         return False
@@ -219,15 +210,18 @@ class Window:
         box.pack_start(row(again, done), False, False, 0)
         return box
 
-    # Opened by itself: the programs the photo can go to.
+    # Opened by itself: the photo is saved, and can be sent on.
     def send_page(self):
         self.saved = Gtk.Label(label="Фото сохранено в папке «Камера».",
                                wrap=True, vexpand=True)
         self.saved.get_style_context().add_class("saved")
-        self.send = row()
+        send = big("Отправить", "suggested-action")
+        send.connect("clicked", lambda b: self.send())
+        more = big("Снять ещё")
+        more.connect("clicked", lambda b: self.again())
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.pack_start(self.saved, True, True, 0)
-        box.pack_start(self.send, False, False, 0)
+        box.pack_start(row(send, more), False, False, 0)
         return box
 
     def changed(self, state):
@@ -337,29 +331,13 @@ class Window:
             print(self.path, flush=True)
             self.win.destroy()
             return
-        # No programs: the page only says the photo is saved.
-        found = found_takers()
-        for child in self.send.get_children():
-            child.destroy()
-        for _app_id, label, info in found:
-            button = big(label, "suggested-action")
-            button.connect("clicked", self.give, info)
-            self.send.pack_start(button, False, False, 0)
-        more = big("Снять ещё")
-        more.connect("clicked", lambda b: self.again())
-        self.send.pack_start(more, False, False, 0)
-        self.send.show_all()
         self.stack.set_visible_child_name("send")
 
-    def give(self, button, info):
-        ctx = self.win.get_display().get_app_launch_context()
-        try:
-            info.launch([Gio.File.new_for_path(self.path)], ctx)
-        except GLib.Error as err:
-            print("haltia-camera: %s" % err.message, file=sys.stderr)
-            return
-        # The photo has gone on; the camera is let go.
-        self.win.destroy()
+    def send(self):
+        # The kit's dialog finds the programs (X-Haltia-Share), starts the
+        # one tapped with the photo, or says there is nowhere to send it.
+        # The Camera stays: in the background it lets the camera go.
+        share.send(self.path, self.win)
 
     def closed(self, win):
         for source in (self.tick, self.retry):
@@ -374,7 +352,7 @@ class App(Gtk.Application):
         # one: it gets its answer on stdout (haltia_kit.camera.take_photo).
         flags = Gio.ApplicationFlags.NON_UNIQUE if take \
             else Gio.ApplicationFlags.FLAGS_NONE
-        super().__init__(application_id=takers.APP, flags=flags)
+        super().__init__(application_id=command.APP, flags=flags)
         self.take = take
         self.window = None
 
@@ -393,9 +371,9 @@ class App(Gtk.Application):
 
 
 def main():
-    take, argv = takers.parse(sys.argv)
+    take, argv = command.parse(sys.argv)
     # The Wayland app_id: the shell matches the window to the .desktop file.
-    GLib.set_prgname(takers.APP)
+    GLib.set_prgname(command.APP)
     return App(take).run(argv)
 
 
