@@ -39,9 +39,13 @@ ON_HALTIA = "Haltia" in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")
 BUSY_NOTE = "Камера занята звонком"
 # Asked by a program while the Camera is already open and holds the camera.
 OPEN_NOTE = "Камера уже открыта"
+# A still that did not come out; the shot buttons stay.
+FAILED_NOTE = "Не получилось, попробуйте ещё раз"
 COUNT = 3
-# How often a busy camera is tried again, in seconds.
+# A busy camera is tried again after RETRY seconds, then each time twice
+# as late, up to RETRY_MOST.
 RETRY = 3
+RETRY_MOST = 12
 
 CSS = b"""
 button.big {
@@ -64,6 +68,12 @@ button.shoot {
   background: black;
   color: white;
   font-size: 34px;
+}
+.failed {
+  font-size: 30px;
+  color: white;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 12px 24px;
 }
 .saved {
   font-size: 26px;
@@ -132,6 +142,9 @@ class Window:
         self.counting = 0
         self.tick = 0
         self.retry = 0
+        self.wait = RETRY
+        self.failed = False
+        self.away = False
         self.win = Gtk.ApplicationWindow(application=app, title="Камера")
         self.win.set_default_size(1000, 700)
         self.win.maximize()
@@ -150,13 +163,20 @@ class Window:
         self.win.show_all()
         self.busy.hide()
         self.count.hide()
+        self.note.hide()
         self.changed(self.view.state)
+        self.win.connect("notify::is-active", self.activated)
 
     # The viewfinder: «Снять», «Через 3 секунды», and the busy note over all.
     def view_page(self):
         self.count = Gtk.Label(halign=Gtk.Align.CENTER,
                                valign=Gtk.Align.CENTER)
         self.count.get_style_context().add_class("count")
+        self.note = Gtk.Label(label=FAILED_NOTE, wrap=True,
+                              justify=Gtk.Justification.CENTER,
+                              halign=Gtk.Align.CENTER,
+                              valign=Gtk.Align.START, margin=24)
+        self.note.get_style_context().add_class("failed")
         self.shoot = big("Снять", "shoot", "suggested-action")
         self.shoot.connect("clicked", lambda b: self.capture())
         self.later = big("Через 3 секунды")
@@ -179,6 +199,7 @@ class Window:
         overlay = Gtk.Overlay()
         overlay.add(self.view)
         overlay.add_overlay(self.count)
+        overlay.add_overlay(self.note)
         box.pack_start(overlay, True, True, 0)
         box.pack_start(self.buttons, False, False, 0)
         outer = Gtk.Overlay()
@@ -212,27 +233,44 @@ class Window:
     def changed(self, state):
         busy = state == camera.BUSY
         if busy:
+            self.failed = False
             self.busy.set_text(OPEN_NOTE if self.take and camera_open()
                                else BUSY_NOTE)
+        elif state == camera.ON:
+            self.wait = RETRY
         self.busy.set_visible(busy)
         self.buttons.set_visible(not busy)
-        ready = state == camera.ON and not self.counting
+        # After a failed still the shot is offered again: capture() opens
+        # the camera itself.
+        usable = state == camera.ON or self.failed and state == camera.FAILED
+        ready = usable and not self.counting
         self.shoot.set_sensitive(ready)
         self.later.set_sensitive(ready)
-        if state != camera.ON:
+        self.note.set_visible(self.failed and not self.counting)
+        if not usable:
             self.stop_count()
         if busy and not self.retry:
-            self.retry = GLib.timeout_add_seconds(RETRY, self.try_again)
+            self.retry = GLib.timeout_add_seconds(self.wait, self.try_again)
 
     def try_again(self):
-        if self.view.state != camera.BUSY:
-            self.retry = 0
+        self.retry = 0
+        if self.view.state != camera.BUSY or self.away:
             return False
-        # The viewfinder turns the camera on when it is mapped: shown anew.
-        if self.view.get_mapped():
-            self.view.hide()
-            self.view.show()
-        return True
+        # Opened again on the kit's thread: the window does not wait.
+        self.view.pause()
+        self.view.resume()
+        self.wait = min(self.wait * 2, RETRY_MOST)
+        self.retry = GLib.timeout_add_seconds(self.wait, self.try_again)
+        return False
+
+    def activated(self, win, _pspec):
+        # In the background the camera is let go: a call may need it.
+        self.away = not win.is_active()
+        if self.away:
+            self.view.pause()
+        else:
+            self.wait = RETRY
+            self.view.resume()
 
     def countdown(self):
         self.counting = COUNT
@@ -259,13 +297,18 @@ class Window:
         self.count.hide()
 
     def capture(self):
+        self.failed = False
+        self.note.hide()
         self.shoot.set_sensitive(False)
         self.later.set_sensitive(False)
         self.view.capture(self.taken)
 
     def taken(self, path):
-        # No path: the viewfinder already says why.
+        # No path: a busy or missing camera the viewfinder already tells;
+        # a still that failed is offered again.
         if not path:
+            self.failed = self.view.state == camera.FAILED
+            self.changed(self.view.state)
             return
         self.path = path
         alloc = self.stack.get_allocation()
