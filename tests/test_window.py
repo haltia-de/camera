@@ -6,6 +6,7 @@ haltia_kit.share."""
 import importlib.machinery
 import importlib.util
 import os
+import tempfile
 import types
 import unittest
 
@@ -90,6 +91,29 @@ class Window(unittest.TestCase):
         finally:
             app.share.send = real
         self.assertEqual(sent, [("/p/Камера/photo.jpg", win.win)])
+
+    def test_photo_is_upright_and_fitted(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("no Pillow")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "photo.jpg")
+            exif = Image.Exif()
+            exif[0x0112] = 6  # turned right: shown 300 wide, 400 high
+            Image.new("RGB", (400, 300), "red").save(path, "JPEG", exif=exif)
+            pix = app.photo_pixbuf(path, (150, 100))
+            self.assertEqual((pix.get_width(), pix.get_height()), (75, 100))
+            pix = app.photo_pixbuf(path, (1000, 1000))  # never scaled up
+            self.assertEqual((pix.get_width(), pix.get_height()), (300, 400))
+
+    def test_late_photo_is_dropped(self):
+        shown = []
+        win = window(shots=2, photo=types.SimpleNamespace(set_from_pixbuf=shown.append))
+        app.Window.decoded(win, 1, "old")
+        app.Window.decoded(win, 2, None)
+        app.Window.decoded(win, 2, "new")
+        self.assertEqual(shown, ["new"])
 
 
 if __name__ == "__main__":
