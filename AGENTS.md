@@ -30,6 +30,15 @@ adds only what is this repository's own.
 - `haltia_camera/command.py`: no screen: the app id and the command line.
 - `data/`: the .desktop file, icon and AppStream metainfo.
 - `packaging/alpine/APKBUILD`; Flatpak comes later.
+- Installed (`sh install.sh [ROOT] [PREFIX]`): Python never caches the
+  script it is started by, so the code of `haltia-camera` goes in as the
+  module `lib/haltia-camera/haltia_camera_main.py`, beside `haltia_camera/`
+  and compiled with it by the package build (haltia-de/ci), and
+  `bin/haltia-camera` is a stub that runs it with
+  `runpy.run_module(..., run_name="__main__", alter_sys=False)`: `sys.argv`
+  and the `python3 /usr/bin/haltia-camera` command line stay. `__file__` is
+  then that module, so the program finds `haltia_camera/` beside itself
+  either way. The checkout keeps the script, which the tests load by path.
 
 ## A photo for a program
 
