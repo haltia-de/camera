@@ -1,5 +1,15 @@
 # Камера: что нового
 
+## 0.1.1 (2026-10-28)
+
+### Русский
+
+Снимок после «Снять» появляется без задержки окна: фото готовится в фоне сразу нужного размера.
+
+### English
+
+The photo after a shot shows without the window stalling: it is prepared in the background at the size it is shown.
+
 ## 0.1.0 (2026-10-22)
 
 ### Русский
