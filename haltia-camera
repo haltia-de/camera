@@ -20,6 +20,7 @@ of a camera, for trying it without one.
 
 import os
 import sys
+import threading
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 PREFIX = os.path.dirname(HERE)
@@ -32,7 +33,7 @@ import gi  # noqa: E402
 gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
-from haltia_kit import camera, share  # noqa: E402
+from haltia_kit import camera, pictures, share  # noqa: E402
 
 from haltia_camera import command  # noqa: E402
 
@@ -111,6 +112,17 @@ def camera_open():
     return reply.unpack()[0]
 
 
+def photo_pixbuf(path, box):
+    """The photo upright and fitted into box (w, h), never scaled up. A JPEG
+    is decoded at the scale needed (kit's pictures, Pillow's draft), not
+    at full size: call it off the GTK thread."""
+    im = pictures.load(path, box=box)
+    alpha = im.mode == "RGBA"
+    return GdkPixbuf.Pixbuf.new_from_bytes(
+        GLib.Bytes.new(im.tobytes()), GdkPixbuf.Colorspace.RGB, alpha, 8,
+        im.width, im.height, im.width * (4 if alpha else 3))
+
+
 def big(label, *classes):
     button = Gtk.Button(label=label)
     for name in ("big",) + classes:
@@ -130,6 +142,7 @@ class Window:
         self.app = app
         self.take = take
         self.path = None
+        self.shots = 0  # photos shown; an older one decoded late is dropped
         self.counting = 0
         self.tick = 0
         self.retry = 0
@@ -305,24 +318,32 @@ class Window:
             self.changed(self.view.state)
             return
         self.path = path
+        self.shots += 1
         alloc = self.stack.get_allocation()
-        try:
-            pix = GdkPixbuf.Pixbuf.new_from_file(path)
-            pix = pix.apply_embedded_orientation()
-            scale = min(alloc.width / pix.get_width(),
-                        (alloc.height - 104) / pix.get_height(), 1)
-            if scale < 1:
-                pix = pix.scale_simple(max(1, int(pix.get_width() * scale)),
-                                       max(1, int(pix.get_height() * scale)),
-                                       GdkPixbuf.InterpType.BILINEAR)
-            self.photo.set_from_pixbuf(pix)
-        except GLib.Error:
-            self.photo.clear()
+        # The buttons' row is 104 px; the photo gets the rest.
+        box = (max(1, alloc.width), max(1, alloc.height - 104))
+        self.photo.clear()
         self.stack.set_visible_child_name("shot")
+        # Decoded on a thread of its own: a 5 Mpx JPEG held the window.
+        threading.Thread(target=self.decode, args=(self.shots, path, box),
+                         daemon=True).start()
+
+    def decode(self, shot, path, box):
+        try:
+            pix = photo_pixbuf(path, box)
+        except Exception:  # noqa: BLE001 - the page stays, without the photo
+            pix = None
+        GLib.idle_add(self.decoded, shot, pix)
+
+    def decoded(self, shot, pix):
+        if shot == self.shots and pix is not None:
+            self.photo.set_from_pixbuf(pix)
+        return False
 
     def again(self):
         # The photo stays in the folder: every shot is kept.
         self.path = None
+        self.shots += 1
         self.stack.set_visible_child_name("view")
         self.changed(self.view.state)
 
