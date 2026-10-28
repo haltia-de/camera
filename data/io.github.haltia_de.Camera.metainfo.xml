@@ -19,6 +19,12 @@
   <requires><control>touch</control></requires>
   <recommends><control>pointing</control></recommends>
   <releases>
+    <release version="0.1.1" date="2026-10-28">
+      <description>
+        <p>The photo after a shot shows without the window stalling: it is prepared in the background at the size it is shown.</p>
+        <p xml:lang="ru">Снимок после «Снять» появляется без задержки окна: фото готовится в фоне сразу нужного размера.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-22">
       <description>
         <p>The first version: a viewfinder, «Снять» and «Через 3 секунды», the photo with «Ещё раз» and «Готово», «Отправить», and a photo for a program that asks for one.</p>
