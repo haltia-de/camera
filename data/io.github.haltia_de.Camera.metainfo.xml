@@ -19,6 +19,12 @@
   <requires><control>touch</control></requires>
   <recommends><control>pointing</control></recommends>
   <releases>
+    <release version="0.1.2" date="2026-10-28">
+      <description>
+        <p>The program starts faster: its code is loaded already compiled.</p>
+        <p xml:lang="ru">Программа запускается быстрее: её код загружается уже скомпилированным.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-10-28">
       <description>
         <p>The photo after a shot shows without the window stalling: it is prepared in the background at the size it is shown.</p>
