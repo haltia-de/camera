@@ -1,6 +1,6 @@
 # Maintainer: Mikhail Nevskiy <rensomail@gmail.com>
 pkgname=haltia-camera
-pkgver=0.1.1
+pkgver=0.1.2
 pkgrel=0
 pkgdesc="Камера: Take a photo with one big button (GTK 3)"
 url="https://github.com/haltia-de/camera"
