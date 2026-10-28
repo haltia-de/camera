@@ -28,7 +28,7 @@ install -m 644 "$here"/haltia_camera/*.py "$root$prefix/lib/haltia-camera/haltia
 install -D -m 644 "$here/haltia-camera" "$root$prefix/lib/haltia-camera/haltia_camera_main.py"
 mkdir -p "$root$prefix/bin"
 cat >"$root$prefix/bin/haltia-camera" <<EOF
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # The code is $prefix/lib/haltia-camera/haltia_camera_main.py, run as a module so Python loads it compiled.
 import runpy
 import sys
